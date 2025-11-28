@@ -1,15 +1,41 @@
 @echo off
 setlocal
 
-REM この bat があるフォルダに移動
+rem この bat があるフォルダに移動
 cd /d "%~dp0"
 
-echo [INFO] Starting Locallm (Embedding版) with Miniforge Python...
+echo [INFO] Locallm (embedding) starting ...
 
-REM Miniforge の base 環境をアクティベート
-call "%USERPROFILE%\miniforge3\Scripts\activate.bat"
+rem Miniforge の activate.bat を決め打ち
+set "MINIFORGE_ACT=%USERPROFILE%\miniforge3\Scripts\activate.bat"
 
-REM Streamlit で埋め込み版アプリを起動
+if not exist "%MINIFORGE_ACT%" (
+    echo [ERROR] Miniforge not found at:
+    echo         "%MINIFORGE_ACT%"
+    echo.
+    echo Please install Miniforge (miniforge3) and retry.
+    echo.
+    pause
+    goto :EOF
+)
+
+echo [INFO] Activating Miniforge base ...
+call "%MINIFORGE_ACT%" base
+
+if errorlevel 1 (
+    echo [ERROR] Failed to activate Miniforge base.
+    echo        Try running the following manually:
+    echo          "%MINIFORGE_ACT%" base
+    echo.
+    pause
+    goto :EOF
+)
+
+echo [INFO] Launching Streamlit app (embedding version) ...
 python -m streamlit run app\app_emb.py
+
+echo.
+echo [INFO] Streamlit exited. Press any key to close.
+pause
 
 endlocal
