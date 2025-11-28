@@ -33,7 +33,7 @@ C:\TMP\Locallm\
 
 ---
 
-### **手順 2：setup_locallm_wizard.bat を実行**
+### **手順 2：setup.bat を実行**
 
 1. `Locallm\setup_locallm_wizard.bat` を右クリック → **管理者として実行**
 2. 自動で以下を実施：
@@ -72,7 +72,7 @@ Locallm/
 │─ requirements.txt
 │─ run_app_kwm.bat
 │─ setup_venv.bat
-│─ setup_locallm_wizard.bat
+│─ setup.bat
 │─ README.md
 ```
 
@@ -124,7 +124,8 @@ LLM_API_KEY=xxxxx
 
 ```
 cd C:\TMP\Locallm
-.un_app_kwm.bat
+.
+un_app_kwm.bat
 ```
 
 または
@@ -142,7 +143,7 @@ PowerShell で実行：
 
 ```
 cd C:\TMP\Locallm
-.\setup_locallm_wizard.bat
+.\setup.bat
 ```
 
 ### Miniforge が見つからない  
