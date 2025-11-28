@@ -1,0 +1,2 @@
+# locallm
+パソコンのローカル環境からLLMのAPIを呼び出ししてAIとチャットできるアプリです。ログなどはすべてローカル環境に保存されるのでセキュリティが気になる企業ユースに向いています。対象OSはWindowsです。miniforge3のインストールをしておいてください。Miniforge3のインストール先はC:\Users\&lt;User Name\miniforge3です。>setup.batを実行するとc:\TMP\Locallmにモジュールが導入されます。run_app_kwm.batを実行すると起動します。終了するにはブラウザを閉じ、コマンドプロンプトをCTRL+Cで終わらせて下さい。
