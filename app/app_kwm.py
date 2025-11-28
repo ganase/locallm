@@ -17,9 +17,9 @@ load_dotenv()
 LOCALLM_API_KEY = os.getenv("LOCALLM_API_KEY")
 LOCALLM_BASE_URL = os.getenv(
     "LOCALLM_BASE_URL",
-    "https://api-opensource-ai.mde.rakuten-it.com",
+    "",
 )
-LOCALLM_CHAT_MODEL = os.getenv("LOCALLM_CHAT_MODEL", "rakutenai-2.0")
+LOCALLM_CHAT_MODEL = os.getenv("LOCALLM_CHAT_MODEL", "")
 
 # ---------------------------------------------------------
 # パス設定
@@ -320,7 +320,7 @@ def search_knowledge(query: str, docs: List[str], top_k: int = 3) -> List[str]:
 # ---------------------------------------------------------
 # LLM 呼び出し
 # ---------------------------------------------------------
-def call_rakuten_llm(query: str, contexts: List[str]) -> str:
+def call_local_llm(query: str, contexts: List[str]) -> str:
     client = get_client()
     if isinstance(client, str):
         # エラーメッセージが返ってきた場合
@@ -493,7 +493,7 @@ def main() -> None:
 
         # LLM 呼び出し
         with st.spinner("問い合わせ中..."):
-            answer = call_rakuten_llm(query, contexts)
+            answer = call_local_llm(query, contexts)
 
         # アシスタント回答表示
         with st.chat_message("assistant"):
