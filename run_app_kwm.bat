@@ -1,32 +1,41 @@
 @echo off
 setlocal
 
-rem === この bat があるフォルダに移動 ===
+rem この bat があるフォルダに移動（C:\TMP\Locallm 想定だが、どこでもOK）
 cd /d "%~dp0"
 
-echo [INFO] Starting LOCALLM with Miniforge Python...
+echo [INFO] Locallm (keyword match) starting ...
 
-rem === Miniforge の python.exe を指定 ===
-set "PYTHON_EXE=%USERPROFILE%\miniforge3\python.exe"
-echo [INFO] Using Python: "%PYTHON_EXE%"
-echo.
+rem Miniforge の activate.bat を決め打ち
+set "MINIFORGE_ACT=%USERPROFILE%\miniforge3\Scripts\activate.bat"
 
-rem === python が本当にあるか確認 ===
-if not exist "%PYTHON_EXE%" (
-    echo [ERROR] Python not found at "%PYTHON_EXE%".
-    echo Miniforge のインストール場所を確認してください。
+if not exist "%MINIFORGE_ACT%" (
+    echo [ERROR] Miniforge not found at:
+    echo         "%MINIFORGE_ACT%"
+    echo.
+    echo Please install Miniforge (miniforge3) and retry.
+    echo.
     pause
-    exit /b 1
+    goto :EOF
 )
 
-rem === バージョン表示（確認用） ===
-"%PYTHON_EXE%" -c "import sys; print('Python executable:', sys.executable); print('Version:', sys.version)"
-echo.
+echo [INFO] Activating Miniforge base ...
+call "%MINIFORGE_ACT%" base
 
-rem === Streamlit アプリ起動 ===
-echo [INFO] Starting Streamlit app (app\app_kwm.py)...
-"%PYTHON_EXE%" -m streamlit run app\app_kwm.py
 if errorlevel 1 (
+    echo [ERROR] Failed to activate Miniforge base.
+    echo        Try running the following manually:
+    echo          "%MINIFORGE_ACT%" base
     echo.
-    echo [ERROR] Failed to start Streamlit app.
     pause
+    goto :EOF
+)
+
+echo [INFO] Launching Streamlit app (keyword match) ...
+python -m streamlit run app\app_kwm.py
+
+echo.
+echo [INFO] Streamlit exited. Press any key to close.
+pause
+
+endlocal
