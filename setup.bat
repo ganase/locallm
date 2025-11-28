@@ -1,90 +1,89 @@
 @echo off
 setlocal ENABLEDELAYEDEXPANSION
 
-REM ========================
-REM  STEP 0: Debug info
-REM ========================
-echo [DEBUG] setup_locallm_wizard.bat started
+echo ============================================
+echo  Locallm Setup Wizard
+echo ============================================
+echo.
+echo [DEBUG] setup.bat started
+echo.
 
+rem この bat が置いてあるフォルダを取得（GitHub で locallm-main でもOK）
 set "SCRIPT_DIR=%~dp0"
-echo SCRIPT_DIR = "%SCRIPT_DIR%"
+echo [DEBUG] SCRIPT_DIR = "%SCRIPT_DIR%"
 echo.
 echo This wizard will:
-echo   1. Check Miniforge.
-echo   2. Copy locallm to C:\TMP\Locallm.
-echo   3. Install Python packages (using Miniforge base).
-echo   4. Create a desktop shortcut to run_app_kwm.bat.
+echo   1. Check Miniforge (base).
+echo   2. Copy this folder to C:\TMP\Locallm.
+echo   3. Install Python packages (pip install -r requirements.txt).
+echo   4. Create desktop shortcuts:
+echo        - Locallm.lnk      -> run_app_kwm.bat
+echo        - Locallm_emb.lnk  -> run_app_emb.bat
 echo.
 pause
 
-REM ========================
-REM  STEP 1: Check Miniforge
-REM ========================
-echo ============================================
-echo  Locallm セットアップウィザード
-echo ============================================
-echo.
-echo [1/4] Miniforge の確認
-echo    想定パス:
-echo      "%USERPROFILE%\miniforge3\Scripts\activate.bat"
-echo.
+rem ========================
+rem STEP 1: Check Miniforge
+rem ========================
+echo [1/4] Checking Miniforge...
 
 set "MINIFORGE_ACT=%USERPROFILE%\miniforge3\Scripts\activate.bat"
+echo [DEBUG] MINIFORGE_ACT = "%MINIFORGE_ACT%"
 
 if exist "%MINIFORGE_ACT%" (
-    echo -> Miniforge (miniforge3) が見つかりました。
+    echo -> Miniforge found.
 ) else (
-    echo -> Miniforge が見つかりません。
-    echo    以下を参考に Miniforge をインストールしてください:
-    echo      https://github.com/conda-forge/miniforge
+    echo -> Miniforge not found at:
+    echo      "%MINIFORGE_ACT%"
     echo.
-    echo セットアップを終了します。
+    echo Please install Miniforge and retry.
+    echo   https://github.com/conda-forge/miniforge
+    echo.
     pause
     goto :EOF
 )
 echo.
 pause
 
-REM ========================
-REM  STEP 2: Copy to C:\TMP\Locallm
-REM ========================
-echo [2/4] C:\TMP\Locallm へのコピー
+rem ========================
+rem STEP 2: Copy to C:\TMP\Locallm
+rem ========================
+echo [2/4] Copy files to C:\TMP\Locallm ...
+set "TARGET_DIR=C:\TMP\Locallm"
+echo [DEBUG] TARGET_DIR = "%TARGET_DIR%"
 echo.
 
-set "TARGET_DIR=C:\TMP\Locallm"
-
 if not exist "C:\TMP" (
-    echo -> C:\TMP フォルダを作成します...
+    echo -> Creating C:\TMP ...
     mkdir "C:\TMP"
 )
 
 if exist "%TARGET_DIR%" (
-    echo -> 既存の %TARGET_DIR% を削除します...
+    echo -> Removing old %TARGET_DIR% ...
     rmdir /s /q "%TARGET_DIR%"
 )
 
-echo -> %TARGET_DIR% にコピー中...
+echo -> Copying from "%SCRIPT_DIR%" to "%TARGET_DIR%" ...
 mkdir "%TARGET_DIR%"
-xcopy "%SCRIPT_DIR%*" "%TARGET_DIR%\" /E /I /Y >nul
-
-echo -> コピー完了: %TARGET_DIR%
+xcopy "%SCRIPT_DIR%*" "%TARGET_DIR%\" /E /I /Y
+echo -> Copy done.
 echo.
 pause
 
-REM ========================
-REM  STEP 3: Install requirements via Miniforge base
-REM ========================
-echo [3/4] Python パッケージのインストール
-echo    Miniforge base 環境で requirements.txt をインストールします。
+rem ========================
+rem STEP 3: Install requirements with Miniforge base
+rem ========================
+echo [3/4] Installing Python packages with Miniforge base ...
 echo.
 
 pushd "%TARGET_DIR%"
+echo [DEBUG] CURRENT DIR = "%CD%"
 
-REM Miniforge base をアクティベートして pip インストール
+echo -> Activating Miniforge base ...
 call "%MINIFORGE_ACT%" base
 if errorlevel 1 (
-    echo -> Miniforge base のアクティベートに失敗しました。
-    echo    手動で以下を実行して確認してください:
+    echo -> Failed to activate Miniforge base.
+    echo    Try running this manually:
     echo      "%MINIFORGE_ACT%" base
     echo.
     pause
@@ -92,98 +91,74 @@ if errorlevel 1 (
     goto :EOF
 )
 
-echo -> pip install -r requirements.txt を実行します...
+echo -> Running: pip install -r requirements.txt
 pip install -r requirements.txt
 if errorlevel 1 (
-    echo -> pip install -r requirements.txt に失敗しました。
-    echo    エラーメッセージを確認してください。
+    echo -> pip install failed.
+    echo    Check error messages above.
     echo.
     pause
     popd
     goto :EOF
 )
 
-echo -> パッケージインストール完了。
+echo -> Requirements installed successfully.
 echo.
 pause
-
 popd
 
-REM ========================
-REM  STEP 4: Create Desktop Shortcut (run_app_kwm.bat)
-REM ========================
-echo [4/4] デスクトップショートカットの作成 (キーワード検索版)
+rem ========================
+rem STEP 4: Create Desktop Shortcut (KWM版)
+rem ========================
+echo [4/4] Creating desktop shortcuts ...
 echo.
 
-set "SHORTCUT_NAME=Locallm.lnk"
-set "SHORTCUT_PATH=%USERPROFILE%\Desktop\%SHORTCUT_NAME%"
-set "TARGET_BAT=%TARGET_DIR%\run_app_kwm.bat"
+set "SHORTCUT_KWM=%USERPROFILE%\Desktop\Locallm.lnk"
+set "SHORTCUT_EMB=%USERPROFILE%\Desktop\Locallm_emb.lnk"
+set "TARGET_BAT_KWM=%TARGET_DIR%\run_app_kwm.bat"
+set "TARGET_BAT_EMB=%TARGET_DIR%\run_app_emb.bat"
 
-echo Shortcut path :
-echo   %SHORTCUT_PATH%
-echo Target (bat)   :
-echo   %TARGET_BAT%
+echo [DEBUG] SHORTCUT_KWM  = "%SHORTCUT_KWM%"
+echo [DEBUG] SHORTCUT_EMB  = "%SHORTCUT_EMB%"
+echo [DEBUG] TARGET_BAT_KWM = "%TARGET_BAT_KWM%"
+echo [DEBUG] TARGET_BAT_EMB = "%TARGET_BAT_EMB%"
 echo.
 
-if not exist "%TARGET_BAT%" (
-    echo -> %TARGET_BAT% が存在しません。
-    echo    セットアップは済みましたが、ショートカットは作成できませんでした。
-) else (
-    echo -> PowerShell を使ってショートカットを作成します...
-
+rem --- KWM ショートカット ---
+if exist "%TARGET_BAT_KWM%" (
+    echo -> Creating Locallm.lnk ...
     powershell -NoProfile -Command ^
-     "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH%');" ^
-     "$s.TargetPath='%TARGET_BAT%';" ^
+     "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_KWM%');" ^
+     "$s.TargetPath='%TARGET_BAT_KWM%';" ^
      "$s.WorkingDirectory='%TARGET_DIR%';" ^
      "$s.IconLocation='%SystemRoot%\System32\shell32.dll,43';" ^
      "$s.Save()"
-
-    if exist "%SHORTCUT_PATH%" (
-        echo -> ショートカットを作成しました: %SHORTCUT_PATH%
-    ) else (
-        echo -> ショートカット作成に失敗しました。PowerShell 実行ポリシー等を確認してください。
-    )
+) else (
+    echo -> WARNING: "%TARGET_BAT_KWM%" not found. Skipping Locallm.lnk.
 )
 
-REM =========================================================
-REM 4b. Create Desktop Shortcut for Embedding Version (run_app_emb.bat)
-REM =========================================================
-echo.
-echo [4b/4] 埋め込み検索版ショートカットの作成 (Embedding 版)
-set "SHORTCUT_NAME_EMB=Locallm_emb.lnk"
-set "SHORTCUT_PATH_EMB=%USERPROFILE%\Desktop\%SHORTCUT_NAME_EMB%"
-set "TARGET_BAT_EMB=%TARGET_DIR%\run_app_emb.bat"
-
-echo Shortcut path (embedding) :
-echo   %SHORTCUT_PATH_EMB%
-echo Target (bat, embedding)  :
-echo   %TARGET_BAT_EMB%
-echo.
-
-if not exist "%TARGET_BAT_EMB%" (
-    echo -> %TARGET_BAT_EMB% が存在しません。
-    echo    Embedding 版を使う場合は、run_app_emb.bat が存在することを確認してください。
-) else (
-    echo -> PowerShell を使って埋め込み版ショートカットを作成します...
-
+rem --- Embedding 版ショートカット ---
+if exist "%TARGET_BAT_EMB%" (
+    echo -> Creating Locallm_emb.lnk ...
     powershell -NoProfile -Command ^
-     "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH_EMB%');" ^
+     "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_EMB%');" ^
      "$s.TargetPath='%TARGET_BAT_EMB%';" ^
      "$s.WorkingDirectory='%TARGET_DIR%';" ^
      "$s.IconLocation='%SystemRoot%\System32\shell32.dll,43';" ^
      "$s.Save()"
-
-    if exist "%SHORTCUT_PATH_EMB%" (
-        echo -> 埋め込み版ショートカットを作成しました: %SHORTCUT_PATH_EMB%
-    ) else (
-        echo -> 埋め込み版ショートカット作成に失敗しました。PowerShell 実行ポリシー等を確認してください。
-    )
+) else (
+    echo -> WARNING: "%TARGET_BAT_EMB%" not found. Skipping Locallm_emb.lnk.
 )
 
 echo.
-echo セットアップ完了です。
-echo   - キーワード検索版: デスクトップの「Locallm」ショートカット
-echo   - 埋め込み検索版:   デスクトップの「Locallm_emb」ショートカット
+echo ============================================
+echo  Setup finished.
+echo.
+echo  - C:\TMP\Locallm にコピーしています。
+echo  - Desktop に以下のショートカットを作成：
+echo      Locallm.lnk      (キーワード検索版)
+echo      Locallm_emb.lnk  (埋め込み版, run_app_emb.bat があれば)
+echo ============================================
 echo.
 pause
 
