@@ -15,141 +15,104 @@ echo   2. Copy locallm to C:\TMP\Locallm.
 echo   3. Install Python packages (using Miniforge base).
 echo   4. Create a desktop shortcut to run_app_kwm.bat.
 echo.
-echo Press Enter to start STEP 1.
-
+pause
 
 REM ========================
 REM  STEP 1: Check Miniforge
 REM ========================
-echo.
 echo ============================================
-echo [1/4] Check Miniforge (mamba/conda)
+echo  Locallm セットアップウィザード
 echo ============================================
 echo.
-
-set "MAMBA_ROOT_PREFIX=%USERPROFILE%\miniforge3"
-set "ACTIVATE_BAT=%MAMBA_ROOT_PREFIX%\Scripts\activate.bat"
-
-echo Expected Miniforge activate.bat:
-echo   "%ACTIVATE_BAT%"
+echo [1/4] Miniforge の確認
+echo    想定パス:
+echo      "%USERPROFILE%\miniforge3\Scripts\activate.bat"
 echo.
 
-if exist "%ACTIVATE_BAT%" (
-    echo -> Found Miniforge activate.bat.
+set "MINIFORGE_ACT=%USERPROFILE%\miniforge3\Scripts\activate.bat"
+
+if exist "%MINIFORGE_ACT%" (
+    echo -> Miniforge (miniforge3) が見つかりました。
 ) else (
-    echo -> Miniforge was NOT found.
+    echo -> Miniforge が見つかりません。
+    echo    以下を参考に Miniforge をインストールしてください:
+    echo      https://github.com/conda-forge/miniforge
     echo.
-    echo Please install Miniforge3 to:
-    echo   %MAMBA_ROOT_PREFIX%
-    echo and then run this wizard again.
-    echo.
-    echo Press any key to exit.
-    goto END
+    echo セットアップを終了します。
+    pause
+    goto :EOF
 )
-
 echo.
-echo STEP 1 OK. Press Enter to continue to STEP 2.
-
-
+pause
 
 REM ========================
 REM  STEP 2: Copy to C:\TMP\Locallm
 REM ========================
-echo.
-echo ============================================
-echo [2/4] Copy files to C:\TMP\Locallm
-echo ============================================
+echo [2/4] C:\TMP\Locallm へのコピー
 echo.
 
-set "TARGET_ROOT=C:\TMP"
-set "TARGET_DIR=%TARGET_ROOT%\Locallm"
+set "TARGET_DIR=C:\TMP\Locallm"
 
-echo Target root   : %TARGET_ROOT%
-echo Target folder : %TARGET_DIR%
-echo.
-
-if not exist "%TARGET_ROOT%" (
-    echo -> %TARGET_ROOT% does not exist. Creating...
-    mkdir "%TARGET_ROOT%"
+if not exist "C:\TMP" (
+    echo -> C:\TMP フォルダを作成します...
+    mkdir "C:\TMP"
 )
 
 if exist "%TARGET_DIR%" (
-    echo -> %TARGET_DIR% already exists.
-    echo    If you want to overwrite this folder, type Y and press Enter.
-    set /p OVERWRITE="Overwrite existing folder? [y/N]: "
-    if /I "%OVERWRITE%"=="Y" (
-        echo -> Removing existing folder...
-        rmdir /S /Q "%TARGET_DIR%"
-    ) else (
-        echo -> Keeping existing folder. No copy will be done.
-        goto AFTER_COPY
-    )
+    echo -> 既存の %TARGET_DIR% を削除します...
+    rmdir /s /q "%TARGET_DIR%"
 )
 
+echo -> %TARGET_DIR% にコピー中...
+mkdir "%TARGET_DIR%"
+xcopy "%SCRIPT_DIR%*" "%TARGET_DIR%\" /E /I /Y >nul
+
+echo -> コピー完了: %TARGET_DIR%
 echo.
-echo -> Copying from "%SCRIPT_DIR%" to "%TARGET_DIR%" ...
-xcopy "%SCRIPT_DIR%*" "%TARGET_DIR%\" /E /I /Y >NUL
-
-:AFTER_COPY
-echo.
-echo STEP 2 OK. Press Enter to continue to STEP 3.
-
-
+pause
 
 REM ========================
-REM  STEP 3: Install requirements (Miniforge base)
+REM  STEP 3: Install requirements via Miniforge base
 REM ========================
-echo.
-echo ============================================
-echo [3/4] Install Python packages (requirements)
-echo ============================================
-echo.
-
-echo We will:
-echo   1. Activate Miniforge base environment.
-echo   2. Run install_requirements_conda.bat inside:
-echo      %TARGET_DIR%
+echo [3/4] Python パッケージのインストール
+echo    Miniforge base 環境で requirements.txt をインストールします。
 echo.
 
 pushd "%TARGET_DIR%"
-call "%ACTIVATE_BAT%"
+
+REM Miniforge base をアクティベートして pip インストール
+call "%MINIFORGE_ACT%" base
 if errorlevel 1 (
+    echo -> Miniforge base のアクティベートに失敗しました。
+    echo    手動で以下を実行して確認してください:
+    echo      "%MINIFORGE_ACT%" base
     echo.
-    echo -> Failed to activate Miniforge.
-    echo Please try manually:
-    echo   "%ACTIVATE_BAT%"
-    echo   cd /d "%TARGET_DIR%"
-    echo   install_requirements_conda.bat
-    echo.
+    pause
     popd
-    goto AFTER_REQ
+    goto :EOF
 )
 
-if exist "install_requirements_conda.bat" (
-    echo -> Running install_requirements_conda.bat ...
-    call install_requirements_conda.bat
-) else (
-    echo -> install_requirements_conda.bat not found.
-    echo Please install packages manually, for example:
-    echo   pip install -r requirements.txt
+echo -> pip install -r requirements.txt を実行します...
+pip install -r requirements.txt
+if errorlevel 1 (
+    echo -> pip install -r requirements.txt に失敗しました。
+    echo    エラーメッセージを確認してください。
+    echo.
+    pause
+    popd
+    goto :EOF
 )
+
+echo -> パッケージインストール完了。
+echo.
+pause
 
 popd
 
-:AFTER_REQ
-echo.
-echo STEP 3 finished (success or manual action required).
-echo Press Enter to continue to STEP 4.
-
-
-
 REM ========================
-REM  STEP 4: Create desktop shortcut
+REM  STEP 4: Create Desktop Shortcut (run_app_kwm.bat)
 REM ========================
-echo.
-echo ============================================
-echo [4/4] Create desktop shortcut
-echo ============================================
+echo [4/4] デスクトップショートカットの作成 (キーワード検索版)
 echo.
 
 set "SHORTCUT_NAME=Locallm.lnk"
@@ -158,15 +121,16 @@ set "TARGET_BAT=%TARGET_DIR%\run_app_kwm.bat"
 
 echo Shortcut path :
 echo   %SHORTCUT_PATH%
-echo Target (bat)  :
+echo Target (bat)   :
 echo   %TARGET_BAT%
 echo.
 
 if not exist "%TARGET_BAT%" (
-    echo -> %TARGET_BAT% does NOT exist.
-    echo Please check that the files were copied correctly.
+    echo -> %TARGET_BAT% が存在しません。
+    echo    セットアップは済みましたが、ショートカットは作成できませんでした。
 ) else (
-    echo -> Creating shortcut via PowerShell...
+    echo -> PowerShell を使ってショートカットを作成します...
+
     powershell -NoProfile -Command ^
      "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH%');" ^
      "$s.TargetPath='%TARGET_BAT%';" ^
@@ -175,44 +139,52 @@ if not exist "%TARGET_BAT%" (
      "$s.Save()"
 
     if exist "%SHORTCUT_PATH%" (
-        echo -> Shortcut created: %SHORTCUT_PATH%
+        echo -> ショートカットを作成しました: %SHORTCUT_PATH%
     ) else (
-        echo -> Failed to create shortcut. Please check PowerShell execution.
+        echo -> ショートカット作成に失敗しました。PowerShell 実行ポリシー等を確認してください。
+    )
+)
+
+REM =========================================================
+REM 4b. Create Desktop Shortcut for Embedding Version (run_app_emb.bat)
+REM =========================================================
+echo.
+echo [4b/4] 埋め込み検索版ショートカットの作成 (Embedding 版)
+set "SHORTCUT_NAME_EMB=Locallm_emb.lnk"
+set "SHORTCUT_PATH_EMB=%USERPROFILE%\Desktop\%SHORTCUT_NAME_EMB%"
+set "TARGET_BAT_EMB=%TARGET_DIR%\run_app_emb.bat"
+
+echo Shortcut path (embedding) :
+echo   %SHORTCUT_PATH_EMB%
+echo Target (bat, embedding)  :
+echo   %TARGET_BAT_EMB%
+echo.
+
+if not exist "%TARGET_BAT_EMB%" (
+    echo -> %TARGET_BAT_EMB% が存在しません。
+    echo    Embedding 版を使う場合は、run_app_emb.bat が存在することを確認してください。
+) else (
+    echo -> PowerShell を使って埋め込み版ショートカットを作成します...
+
+    powershell -NoProfile -Command ^
+     "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH_EMB%');" ^
+     "$s.TargetPath='%TARGET_BAT_EMB%';" ^
+     "$s.WorkingDirectory='%TARGET_DIR%';" ^
+     "$s.IconLocation='%SystemRoot%\System32\shell32.dll,43';" ^
+     "$s.Save()"
+
+    if exist "%SHORTCUT_PATH_EMB%" (
+        echo -> 埋め込み版ショートカットを作成しました: %SHORTCUT_PATH_EMB%
+    ) else (
+        echo -> 埋め込み版ショートカット作成に失敗しました。PowerShell 実行ポリシー等を確認してください。
     )
 )
 
 echo.
-echo ============================================
-echo Setup wizard finished.
-echo ============================================
+echo セットアップ完了です。
+echo   - キーワード検索版: デスクトップの「Locallm」ショートカット
+echo   - 埋め込み検索版:   デスクトップの「Locallm_emb」ショートカット
 echo.
-echo To start the app next time:
-echo   1. Double-click the desktop shortcut:
-echo        %SHORTCUT_NAME%
-echo   2. Or run manually:
-echo        cd /d "%TARGET_DIR%"
-echo        run_app_kwm.bat
-echo.
-goto END
-
-echo.
-echo ============================================
-echo Setup wizard finished.
-echo ============================================
-echo.
-echo To start the app next time:
-echo   1. Double-click the desktop shortcut:
-echo        %SHORTCUT_NAME%
-echo   2. Or run manually:
-echo        cd /d "%TARGET_DIR%"
-echo        run_app_kwm.bat
-echo.
-goto END
-
-
-:END
-echo.
-echo [DEBUG] setup_locallm_wizard.bat finished.
-echo Press any key to close this window.
+pause
 
 endlocal
