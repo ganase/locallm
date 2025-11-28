@@ -113,9 +113,9 @@ Locallm/
 # 🔐 6. API設定 (.env)
 
 ```
-LLM_BASE_URL=https://xxxxx
-LLM_CHAT_MODEL=xxxxx
-LLM_API_KEY=xxxxx
+LOCALLM_BASE_URL=https://xxxxx
+LOCALLM_CHAT_MODEL=xxxxx
+LOCALLM_API_KEY=xxxxx
 ```
 
 ---
