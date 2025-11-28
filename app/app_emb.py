@@ -1,7 +1,6 @@
 import os
 import json
 import math
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
@@ -15,26 +14,26 @@ from openai import OpenAI
 # ---------------------------------------------------------
 load_dotenv()
 
-# チャット用 LLM (Locallm 側)
-LOCALLM_API_KEY = os.getenv("LOCALLM_API_KEY")
-LOCALLM_BASE_URL = os.getenv("LOCALLM_BASE_URL")
-LOCALLM_CHAT_MODEL = os.getenv("LOCALLM_CHAT_MODEL")
+# チャット用 LLM
+LLM_API_KEY = os.getenv("LOCALLM_API_KEY") or os.getenv("LLM_API_KEY")
+LLM_BASE_URL = os.getenv("LOCALLM_BASE_URL") or os.getenv(
+    "LLM_BASE_URL",
+    "",
+)
+LLM_MODEL = os.getenv("LOCALLM_CHAT_MODEL") or os.getenv("LLM_MODEL", "")
 
-# 埋め込み用モデル
-LOCALLM_EMBEDDING_MODEL = os.getenv("LOCALLM_EMBEDDING_MODEL")
-
-# 埋め込み専用エンドポイント（任意）
-EMB_API_KEY = os.getenv("EMB_API_KEY") or LOCALLM_API_KEY
-EMB_BASE_URL = os.getenv("EMB_BASE_URL") or LOCALLM_BASE_URL
+# 埋め込み用（プロバイダに依存しない抽象名）
+EMB_API_KEY = os.getenv("EMB_API_KEY")
+EMB_BASE_URL = os.getenv("EMB_BASE_URL", "https://api.openai.com/v1")
+EMB_MODEL = os.getenv("EMB_MODEL", "text-embedding-3-small")
 
 # ---------------------------------------------------------
 # パス設定
-# app_emb.py は app/ 配下にある想定
-# ルート:
 #   Locallm/
 #     app/app_emb.py
 #     data/knowledge.txt
 #     data/system_prompt.txt
+#     data/uploads/
 #     logs/
 # ---------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -42,18 +41,12 @@ DATA_DIR = BASE_DIR / "data"
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
-# セッション ID を日付 + ランダムで生成
-def get_session_id() -> str:
-    if "session_id" not in st.session_state:
-        date_str = datetime.now().strftime("%Y%m%d")
-        rand = uuid.uuid4().hex[:8]
-        st.session_state.session_id = f"{date_str}_{rand}"
-    return st.session_state.session_id
+UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 # ---------------------------------------------------------
 # ログ書き込み（1行1JSON の jsonl 形式）
-#   ファイル名: logs/<session_id>.jsonl
 # ---------------------------------------------------------
 def log_interaction(
     question: str,
@@ -61,22 +54,25 @@ def log_interaction(
     contexts: List[str],
     extra: Dict[str, Any] | None = None,
 ) -> None:
-    """logs/<session_id>.jsonl に Q&A とコンテキストを追記"""
+    """logs/YYYYMMDD.jsonl に Q&A とコンテキストを追記"""
     extra = extra or {}
-    session_id = get_session_id()
-    log_path = LOGS_DIR / f"{session_id}.jsonl"
+    date_str = datetime.now().strftime("%Y%m%d")
+    log_path = LOGS_DIR / f"{date_str}.jsonl"
 
     record: Dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
-        "session_id": session_id,
         "question": question,
         "answer": answer,
         "contexts": contexts,
     }
     record.update(extra)
 
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    try:
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        # ログ書き込み失敗は無視（アプリが落ちないように）
+        pass
 
 
 def list_log_files() -> List[Path]:
@@ -86,7 +82,7 @@ def list_log_files() -> List[Path]:
 
 
 def load_history_from_log(log_path: Path) -> List[Dict[str, str]]:
-    """logs/<session>.jsonl から history を組み立てる"""
+    """logs/YYYYMMDD_xxxxxx.jsonl から history を組み立てる"""
     history: List[Dict[str, str]] = []
     if not log_path.exists():
         return history
@@ -108,42 +104,28 @@ def load_history_from_log(log_path: Path) -> List[Dict[str, str]]:
 
 
 # ---------------------------------------------------------
-# クライアント生成
+# LLM / Embedding クライアント
 # ---------------------------------------------------------
-def get_chat_client():
+def get_llm_client():
     """チャット用 LLM クライアント"""
-    if not LOCALLM_API_KEY:
-        return "LOCALLM_API_KEY が設定されていません。.env を確認してください。"
-    if not LOCALLM_BASE_URL:
-        return "LOCALLM_BASE_URL が設定されていません。.env を確認してください。"
-    if not LOCALLM_CHAT_MODEL:
-        return "LOCALLM_CHAT_MODEL が設定されていません。.env を確認してください。"
+    if not LLM_API_KEY:
+        return "LLM_API_KEY が設定されていません。.env を確認してください。"
 
     client = OpenAI(
-        api_key=LOCALLM_API_KEY,
-        base_url=LOCALLM_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
     )
     return client
 
 
-def get_embedding_client():
-    """埋め込み用クライアント
-
-    - EMB_API_KEY / EMB_BASE_URL があればそちらを優先
-    - なければ LOCALLM_* を利用（同じエンドポイントで埋め込みを取る）
-    """
+def get_emb_client():
+    """Embedding 用クライアント（OpenAI / Azure / その他 何でも可）"""
     if not EMB_API_KEY:
-        return "EMB_API_KEY もしくは LOCALLM_API_KEY が設定されていません。.env を確認してください。"
-
-    # EMB_BASE_URL が空で LOCALLM_BASE_URL も空な場合は OpenAI デフォルトに倒す
-    base_url = EMB_BASE_URL or "https://api.openai.com/v1"
-
-    if not LOCALLM_EMBEDDING_MODEL:
-        return "LOCALLM_EMBEDDING_MODEL が設定されていません（埋め込みモデル名）。.env を確認してください。"
+        return "EMB_API_KEY が設定されていません。.env を確認してください。"
 
     client = OpenAI(
         api_key=EMB_API_KEY,
-        base_url=base_url,
+        base_url=EMB_BASE_URL,
     )
     return client
 
@@ -155,36 +137,64 @@ def get_embedding_client():
 def load_system_prompt() -> str:
     """
     data/system_prompt.txt の内容を読み込む。
-    無い or 空なら、フォールバックのプロンプトを返す。
+    無い or 空なら、デフォルトのプロンプトを返す。
     """
     path = DATA_DIR / "system_prompt.txt"
     if path.exists():
-        txt = path.read_text(encoding="utf-8").strip()
+        txt = path.read_text(encoding="utf-8", errors="ignore").strip()
         if txt:
             return txt
 
-    # フォールバック
+    # フォールバック用
     return (
-        "あなたは社内ヘルプデスク向けのアシスタントです。常に日本語で丁寧に回答してください。\n"
-        "次のローカルナレッジがあれば、できるだけ優先して活用してください。\n"
+        "あなたはローカルナレッジを活用する社内ヘルプデスクAIです。"
+        "常に日本語で丁寧に回答してください。\n"
+        "ローカルナレッジがあればできるだけ優先して活用し、"
         "ナレッジに無い内容について聞かれた場合は、その旨を伝えた上で、"
         "一般論として答えられる範囲で補足してください。"
     )
 
 
 # ---------------------------------------------------------
-# ローカルナレッジ読み込み (data/knowledge.txt)
-#   空行で区切ってドキュメント単位に分割
+# ローカルナレッジ読み込み
+#   - data/knowledge.txt （空行区切りで 1 ドキュメント）
+#   - data/uploads/*.txt, *.md （空行区切りで 1 ドキュメント）
+#   - data/uploads/*.csv （1 行 = 1 ドキュメント扱い）
 # ---------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def load_knowledge() -> List[str]:
-    path = DATA_DIR / "knowledge.txt"
-    if not path.exists():
-        return []
+    docs: List[str] = []
 
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    blocks = [b.strip() for b in text.split("\n\n") if b.strip()]
-    return blocks
+    # 1) data/knowledge.txt
+    knowledge_path = DATA_DIR / "knowledge.txt"
+    if knowledge_path.exists():
+        text = knowledge_path.read_text(encoding="utf-8", errors="ignore")
+        docs.extend(b.strip() for b in text.split("\n\n") if b.strip())
+
+    # 2) data/uploads/*.txt, *.md
+    for path in UPLOAD_DIR.glob("*.txt"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        docs.extend(b.strip() for b in text.split("\n\n") if b.strip())
+
+    # 3) data/uploads/*.csv ･･･ 1 行 = 1 ドキュメント（ヘッダー行はスキップ）
+    import csv
+
+    for path in UPLOAD_DIR.glob("*.csv"):
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+                reader = csv.reader(f)
+                _header = next(reader, None)
+                for row in reader:
+                    line = ", ".join(col.strip() for col in row if col.strip())
+                    if line:
+                        docs.append(line)
+        except Exception:
+            continue
+
+    return docs
 
 
 def get_knowledge_docs() -> List[str]:
@@ -192,20 +202,17 @@ def get_knowledge_docs() -> List[str]:
 
 
 # ---------------------------------------------------------
-# Streamlit セッション状態
+# セッション状態
 # ---------------------------------------------------------
 def init_session_state() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages: List[Dict[str, str]] = []
 
     if "history" not in st.session_state:
-        # [{"user": "...", "assistant": "..."}, ...]
         st.session_state.history: List[Dict[str, str]] = []
 
     if "loaded_log_name" not in st.session_state:
         st.session_state.loaded_log_name: str | None = None
-
-    # session_id は get_session_id() 側で初期化
 
 
 def add_history(user: str, assistant: str) -> None:
@@ -220,56 +227,54 @@ def get_history() -> List[Dict[str, str]]:
 
 
 # ---------------------------------------------------------
-# 埋め込み & コサイン類似度検索
+# Embedding 関連：コサイン類似度
 # ---------------------------------------------------------
+def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+    """単純なコサイン類似度計算（numpy を使わない版）"""
+    if not vec_a or not vec_b:
+        return 0.0
+
+    # 長さが違う場合は短い方に合わせる
+    n = min(len(vec_a), len(vec_b))
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for i in range(n):
+        a = vec_a[i]
+        b = vec_b[i]
+        dot += a * b
+        na += a * a
+        nb += b * b
+
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+
+    return dot / (math.sqrt(na) * math.sqrt(nb))
+
+
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    """knowledge.txt の各ドキュメントを埋め込む"""
-    client = get_embedding_client()
+    """与えられた texts を Embedding ベクトルに変換"""
+    client = get_emb_client()
     if isinstance(client, str):
-        # エラー文字列が返ってきた場合
+        # エラーメッセージの場合は例外にして上位でハンドリング
         raise RuntimeError(client)
 
-    if not texts:
-        return []
-
     resp = client.embeddings.create(
-        model=LOCALLM_EMBEDDING_MODEL,
+        model=EMB_MODEL,
         input=texts,
     )
     vectors: List[List[float]] = [d.embedding for d in resp.data]
     return vectors
 
 
-def embed_query(text: str) -> List[float]:
-    """クエリを埋め込む"""
-    client = get_embedding_client()
-    if isinstance(client, str):
-        raise RuntimeError(client)
-
-    resp = client.embeddings.create(
-        model=LOCALLM_EMBEDDING_MODEL,
-        input=[text],
-    )
-    return resp.data[0].embedding
-
-
-def cosine_similarity(v1: List[float], v2: List[float]) -> float:
-    dot = 0.0
-    s1 = 0.0
-    s2 = 0.0
-    for a, b in zip(v1, v2):
-        dot += a * b
-        s1 += a * a
-        s2 += b * b
-    if s1 == 0 or s2 == 0:
-        return 0.0
-    return dot / (math.sqrt(s1) * math.sqrt(s2))
-
-
+# ---------------------------------------------------------
+# コーパスのベクトル化 & インデックス構築（キャッシュ）
+# ---------------------------------------------------------
 @st.cache_resource(show_spinner=True)
-def prepare_corpus_for_embeddings() -> Tuple[List[str], List[List[float]]]:
+def build_corpus_index() -> Tuple[List[str], List[List[float]]]:
     """
-    knowledge.txt を読み込み、埋め込みベクトルを構築してキャッシュ。
+    knowledge.txt + uploads をまとめて読み込み、
+    埋め込みベクトルに変換して保持する。
     """
     docs = get_knowledge_docs()
     if not docs:
@@ -279,35 +284,32 @@ def prepare_corpus_for_embeddings() -> Tuple[List[str], List[List[float]]]:
     return docs, vectors
 
 
-def search_by_embedding(query: str, top_k: int = 3) -> Tuple[List[str], List[float]]:
+def retrieve_with_embedding(query: str, top_k: int = 3) -> List[str]:
     """
-    埋め込みで類似ドキュメントを検索
-    戻り値: (docs, scores)
+    クエリを埋め込み、コサイン類似度の高い順に top_k 件返す
     """
-    docs, vectors = prepare_corpus_for_embeddings()
+    docs, vectors = build_corpus_index()
     if not docs or not vectors:
-        return [], []
+        return []
 
-    q_vec = embed_query(query)
+    # クエリを埋め込み
+    q_vec = embed_texts([query])[0]
+
     scored: List[Tuple[float, str]] = []
-
-    for doc, v in zip(docs, vectors):
-        score = cosine_similarity(q_vec, v)
-        scored.append((score, doc))
+    for doc, vec in zip(docs, vectors):
+        score = cosine_similarity(q_vec, vec)
+        if score > 0.0:
+            scored.append((score, doc))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:top_k]
-
-    top_docs = [d for _, d in top]
-    top_scores = [s for s, _ in top]
-    return top_docs, top_scores
+    return [doc for score, doc in scored[:top_k]]
 
 
 # ---------------------------------------------------------
-# LLM 呼び出し（チャット）
+# LLM 呼び出し
 # ---------------------------------------------------------
 def call_llm_with_context(query: str, contexts: List[str]) -> str:
-    client = get_chat_client()
+    client = get_llm_client()
     if isinstance(client, str):
         # エラーメッセージが返ってきた場合
         return client
@@ -318,14 +320,13 @@ def call_llm_with_context(query: str, contexts: List[str]) -> str:
     if contexts:
         context_text = "\n\n---\n\n".join(contexts)
     else:
-        context_text = "ローカルナレッジ（knowledge.txt）から関連情報は見つかりませんでした。"
+        context_text = "ローカルナレッジから関連情報は見つかりませんでした。"
 
-    # system_prompt.txt の内容 + ローカルナレッジを結合
     base_system_prompt = load_system_prompt()
     system_content = (
         f"{base_system_prompt}\n\n"
         "-----\n"
-        "以下はローカルナレッジ（knowledge.txt から抽出された関連情報）です。"
+        "以下はローカルナレッジ（knowledge.txt / uploads）から抽出された関連情報です。"
         "必要に応じて参照してください。\n\n"
         f"{context_text}"
     )
@@ -342,7 +343,7 @@ def call_llm_with_context(query: str, contexts: List[str]) -> str:
     messages.append({"role": "user", "content": query})
 
     resp = client.chat.completions.create(
-        model=LOCALLM_CHAT_MODEL,
+        model=LLM_MODEL,
         messages=messages,
         temperature=0.3,
     )
@@ -356,16 +357,14 @@ def call_llm_with_context(query: str, contexts: List[str]) -> str:
 # ---------------------------------------------------------
 def main() -> None:
     st.set_page_config(
-        page_title="Locallm Embedding Search",
+        page_title="Locallm Embedding版",
         page_icon="🧠",
         layout="wide",
     )
-    st.title("Locallm 埋め込み検索版 💬")
-    st.caption("knowledge.txt を埋め込みベクトルで検索して回答するデモ")
+    st.title("Locallm Embedding版 (ベクトル検索) 🧠")
+    st.caption("ローカルナレッジ + Embedding による RAG テスト用アプリ")
 
     init_session_state()
-
-    # 事前にナレッジ読み込み（件数だけ出す）
     docs = get_knowledge_docs()
     doc_count = len(docs)
 
@@ -378,9 +377,6 @@ def main() -> None:
             st.session_state.history = []
             st.session_state.messages = []
             st.session_state.loaded_log_name = None
-            # session_id は再生成
-            if "session_id" in st.session_state:
-                del st.session_state["session_id"]
             st.success("新しいチャットを開始しました。")
             st.rerun()
 
@@ -394,7 +390,7 @@ def main() -> None:
         else:
             st.caption("直近 20 件")
             for log_path in log_files[:20]:
-                label = log_path.stem  # 例: 20251126_xxxxxxxx
+                label = log_path.stem
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     st.write(label)
@@ -402,7 +398,6 @@ def main() -> None:
                     if st.button("→", key=f"load_log_{label}"):
                         history = load_history_from_log(log_path)
                         st.session_state.history = history
-                        # Chat UI 用 messages を再構築
                         st.session_state.messages = []
                         for turn in history:
                             st.session_state.messages.append(
@@ -422,7 +417,7 @@ def main() -> None:
 
         # ローカルナレッジ概要
         st.header("ローカルナレッジ")
-        st.write(f"knowledge.txt の文書数: **{doc_count}** 件")
+        st.write(f"knowledge.txt + uploads の文書数: **{doc_count}** 件")
 
         knowledge_path = DATA_DIR / "knowledge.txt"
         st.caption("knowledge.txt Path")
@@ -450,12 +445,11 @@ def main() -> None:
             st.caption("system_prompt.txt が存在しません。")
 
         st.markdown("---")
-
         st.subheader("環境情報")
-        st.write(f"Chat Base URL: `{LOCALLM_BASE_URL}`")
-        st.write(f"Chat Model: `{LOCALLM_CHAT_MODEL}`")
-        st.write(f"Embedding Base URL: `{EMB_BASE_URL or 'https://api.openai.com/v1'}`")
-        st.write(f"Embedding Model: `{LOCALLM_EMBEDDING_MODEL}`")
+        st.write(f"[LLM] Base URL: `{LLM_BASE_URL}`")
+        st.write(f"[LLM] Model    : `{LLM_MODEL}`")
+        st.write(f"[EMB] Base URL: `{EMB_BASE_URL}`")
+        st.write(f"[EMB] Model    : `{EMB_MODEL}`")
 
     # -----------------------------
     # これまでのメッセージ表示
@@ -467,7 +461,7 @@ def main() -> None:
     # -----------------------------
     # チャット入力
     # -----------------------------
-    query = st.chat_input("質問を入力してください（knowledge.txt の内容に関する質問など）")
+    query = st.chat_input("質問を入力してください（ローカルナレッジ + Embedding で検索）")
 
     if query:
         # ユーザー入力表示
@@ -475,16 +469,13 @@ def main() -> None:
         with st.chat_message("user"):
             st.write(query)
 
-        # ローカルナレッジ検索（埋め込み）
-        with st.spinner("埋め込みインデックスを使ってローカルナレッジを検索しています..."):
+        # RAG: Embedding 検索
+        with st.spinner("ローカルナレッジ（Embedding）を検索しています..."):
             try:
-                contexts, scores = search_by_embedding(query, top_k=3)
-            except RuntimeError as e:
-                # クライアント設定系のエラーなど
-                error_msg = str(e)
-                with st.chat_message("assistant"):
-                    st.error(error_msg)
-                return
+                contexts = retrieve_with_embedding(query, top_k=3)
+            except Exception as e:
+                contexts = []
+                st.error(f"Embedding 検索中にエラーが発生しました: {e}")
 
         # LLM 呼び出し
         with st.spinner("LLM に問い合わせ中..."):
@@ -494,27 +485,17 @@ def main() -> None:
         with st.chat_message("assistant"):
             st.write(answer)
 
-            # 🔍 今回参照したローカルナレッジ + スコア表示
             if contexts:
-                with st.expander("今回参照したローカルナレッジ（knowledge.txt, 埋め込み検索）"):
-                    for i, (ctx, sc) in enumerate(zip(contexts, scores), start=1):
-                        st.markdown(f"**Doc {i} (score={sc:.3f})**")
+                with st.expander("今回参照したローカルナレッジ（Embedding 検索結果）"):
+                    for i, ctx in enumerate(contexts, start=1):
+                        st.markdown(f"**Doc {i}**")
                         st.write(ctx)
             else:
-                st.caption("knowledge.txt から関連する文書が見つかりませんでした。")
+                st.caption("Embedding によるローカルナレッジ検索結果はありませんでした。")
 
         # セッション履歴 & ログ保存
         add_history(query, answer)
-        try:
-            log_interaction(
-                question=query,
-                answer=answer,
-                contexts=contexts,
-                extra={"scores": scores},
-            )
-        except Exception:
-            # ログ失敗でアプリが落ちないように
-            pass
+        log_interaction(query, answer, contexts)
 
 
 if __name__ == "__main__":
