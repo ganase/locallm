@@ -1,4 +1,4 @@
-# 📘 Locallm — Local LLM + Local Knowledge Assistant  
+# 📘 Locallm — LLM + Local Knowledge Assistant  
 **A fully local, secure, zero-server knowledge search & Q&A system**
 
 ローカル PC 上で動作する **セキュアなナレッジ検索・Q&A アプリ**です。  
